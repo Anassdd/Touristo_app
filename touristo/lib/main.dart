@@ -1,20 +1,3 @@
-//import 'package:flutter/material.dart';
-
-/*
-void main() {
-  runApp(const TouristoApp());
-}
-
-class TouristoApp extends StatelessWidget {
-  const TouristoApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(home: Scaffold());
-  }
-}
-*/
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';

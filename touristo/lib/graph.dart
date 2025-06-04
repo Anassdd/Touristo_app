@@ -4,8 +4,8 @@ import 'package:flutter/services.dart' show rootBundle;
 /// Noeud du graphe
 class GraphNode {
   final dynamic id; // int ou string (dynamic)
-  final double lat; // axe x
-  final double lon; // axe y
+  final double lat; // axe x ou latitude
+  final double lon; // axe y ou longitude
   final String? type; // optionel, musée, 'intersection' ..
   final String?
   name; // optionel, car les noeuds d'ontersection des rues n'ont pas de nom
