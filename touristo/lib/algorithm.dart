@@ -1,6 +1,9 @@
 import 'package:touristo/graph.dart';
 
-Map<String, Map<dynamic, dynamic>> disktraSansTas(Graph graph, dynamic depart) {
+Map<String, Map<dynamic, dynamic>> dijkstraSansTas(
+  Graph graph,
+  dynamic depart,
+) {
   final distances =
       <
         dynamic,
