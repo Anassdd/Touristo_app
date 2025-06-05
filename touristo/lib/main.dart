@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -29,7 +31,6 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  bool isLoading = false;
   double? routeDistance;
   double? routeDuration;
   List<TextEditingController> stopControllers = [];
@@ -39,7 +40,7 @@ class _MainAppState extends State<MainApp> {
   List<GraphNode?> intermediateStops = [];
   final DraggableScrollableController _draggableController =
       DraggableScrollableController();
-  double _sheetExtent = 0.35;
+  double _sheetExtent = 0.3;
   bool showResetButton = true;
   final TextEditingController _fromController = TextEditingController();
   final TextEditingController _toController = TextEditingController();
@@ -156,6 +157,51 @@ class _MainAppState extends State<MainApp> {
     });
   }
 
+  double _calculateZoomFromBounds(LatLngBounds bounds, Size screenSize) {
+    const WORLD_DIM = 256.0; // Tile size
+    const ZOOM_MAX = 18;
+
+    final latFraction = (latRad(bounds.north) - latRad(bounds.south)) / math.pi;
+    final lngDiff = bounds.east - bounds.west;
+    final lngFraction = ((lngDiff < 0 ? (lngDiff + 360) : lngDiff) / 360).clamp(
+      0,
+      1,
+    );
+
+    final latZoom =
+        (math.log(screenSize.height / WORLD_DIM / latFraction) / math.ln2);
+    final lngZoom =
+        (math.log(screenSize.width / WORLD_DIM / lngFraction) / math.ln2);
+
+    return math.min(latZoom, lngZoom).clamp(0, ZOOM_MAX).toDouble();
+  }
+
+  double latRad(double lat) {
+    final sin = math.sin(lat * math.pi / 180);
+    final radX2 = math.log((1 + sin) / (1 - sin)) / 2;
+    return radX2.clamp(-math.pi, math.pi);
+  }
+
+  void _animateMapTo(LatLng targetCenter, double targetZoom) async {
+    const int steps = 30;
+    const Duration stepDuration = Duration(milliseconds: 16); // ~60fps
+
+    final currentCenter = _mapController.camera.center;
+    final currentZoom = _mapController.camera.zoom;
+
+    for (int i = 1; i <= steps; i++) {
+      final t = i / steps;
+
+      final lat = _lerp(currentCenter.latitude, targetCenter.latitude, t);
+      final lon = _lerp(currentCenter.longitude, targetCenter.longitude, t);
+      final zoom = _lerp(currentZoom, targetZoom, t);
+
+      _mapController.move(LatLng(lat, lon), zoom);
+      await Future.delayed(stepDuration);
+    }
+  }
+
+  double _lerp(double a, double b, double t) => a + (b - a) * t;
   // ========================================================== Selection et appeld'algorithme =======================================================
   // DEBUG VERSION
   void computeRoute() {
@@ -213,6 +259,21 @@ class _MainAppState extends State<MainApp> {
       }).toList();
       routeDistance = totalDistance;
       routeDuration = estimatedTime;
+      if (routePoints.length > 1) {
+        final bounds = LatLngBounds.fromPoints(routePoints);
+        final center = bounds.center;
+        final zoomLevel = _calculateZoomFromBounds(
+          bounds,
+          MediaQuery.of(context).size,
+        );
+        _draggableController.animateTo(
+          0.2, // Or any value >= minChildSize
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOut,
+        );
+
+        _animateMapTo(center, zoomLevel);
+      }
     });
 
     print('📏 Distance: ${totalDistance.toStringAsFixed(2)} km');
@@ -316,25 +377,67 @@ class _MainAppState extends State<MainApp> {
             ],
           ),
           Positioned(
-            right: 20,
             bottom: _sheetExtent * MediaQuery.of(context).size.height + 20,
+            right: 20,
             child: Visibility(
               visible: showResetButton,
-              child: FloatingActionButton(
-                heroTag: "resetBtn",
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
-                elevation: 4,
-                mini: true,
-                onPressed: resetSelections,
-                child: const Icon(Icons.refresh),
+              child: Row(
+                children: [
+                  // Calculate Button
+                  FloatingActionButton(
+                    heroTag: 'calculate',
+                    backgroundColor: Colors.black,
+                    mini: true,
+                    onPressed: computeRoute,
+                    child: const Icon(Icons.route, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10),
+                  // Reset Button
+                  FloatingActionButton(
+                    heroTag: 'reset',
+                    backgroundColor: Colors.white,
+                    mini: true,
+                    onPressed: resetSelections,
+                    child: const Icon(Icons.refresh, color: Colors.black),
+                  ),
+                ],
               ),
             ),
           ),
+          if (routeDistance != null && routeDuration != null)
+            Positioned(
+              top: 70,
+              left: 20,
+              right: 20,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '📏 ${routeDistance!.toStringAsFixed(2)} km',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      '⏱ ${routeDuration!.toStringAsFixed(0)} min',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           // Bottom Sheet
           DraggableScrollableSheet(
             controller: _draggableController,
-            initialChildSize: 0.35,
+            initialChildSize: 0.3,
             minChildSize: 0.2,
             maxChildSize: 0.9,
             builder: (_, scrollController) => Container(
@@ -353,6 +456,8 @@ class _MainAppState extends State<MainApp> {
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   DropdownButton<String>(
+                    iconEnabledColor: Colors.black, // Icon color
+                    dropdownColor: Colors.white,
                     value: selectedAlgorithm,
                     isExpanded: true,
                     onChanged: (value) =>
@@ -472,29 +577,7 @@ class _MainAppState extends State<MainApp> {
                     ),
                   ),
                   if (routeDistance != null && routeDuration != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '📏 Distance: ${routeDistance!.toStringAsFixed(2)} km',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          Text(
-                            '⏱️ Estimated Time: ${routeDuration!.toStringAsFixed(0)} min',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 10),
+                    const SizedBox(height: 10),
                   OutlinedButton(
                     onPressed: resetSelections,
                     child: const Text("Reset"),
