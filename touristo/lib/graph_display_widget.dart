@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:graphview/GraphView.dart'
-    as gv; // Alias graphview's Graph class
-import 'package:touristo/graph.dart'; // Import your Graph and GraphNode classes
+    as gv; // Alias graphview pour éviter les conflits de nom
+import 'package:touristo/graph.dart'; // Votre classe Graph
 
-/// A Flutter widget to display a graph visually using the graphview library.
-/// It allows for interactive tapping on nodes.
-class GraphDisplayWidget extends StatelessWidget {
-  final Graph graph; // This refers to your custom Graph class
-  final List<dynamic> path;
-  final dynamic startNodeId;
-  final dynamic endNodeId;
+/// Widget d'affichage de graphe interactif.
+/// Utilise la bibliothèque `graphview` pour le rendu et permet le pan, le zoom
+/// et la sélection de nœuds par clic.
+class GraphDisplayWidget extends StatefulWidget {
+  final Graph graph; // Le graphe personnalisé à afficher
+  final List<dynamic> path; // Le chemin à mettre en évidence
+  final dynamic startNodeId; // L'ID du nœud de départ sélectionné
+  final dynamic endNodeId; // L'ID du nœud d'arrivée sélectionné
+  final Function(dynamic nodeId)?
+  onNodeTapped; // Fonction de rappel pour le tap sur un nœud
 
   const GraphDisplayWidget({
     super.key,
@@ -17,47 +20,73 @@ class GraphDisplayWidget extends StatelessWidget {
     required this.path,
     this.startNodeId,
     this.endNodeId,
+    this.onNodeTapped,
   });
 
   @override
-  Widget build(BuildContext context) {
-    // Convert your custom Graph object to GraphView's Graph object
-    final gv.Graph graphViewGraph =
-        gv.Graph(); // Use gv.Graph for graphview's Graph
-    final Map<dynamic, gv.Node> nodeMap =
-        {}; // Map your node IDs to GraphView Nodes
+  State<GraphDisplayWidget> createState() => _GraphDisplayWidgetState();
+}
 
-    // Add nodes to GraphView's graph
-    for (var node in graph.nodes.values) {
-      final graphViewNode = gv.Node.Id(
-        node.id,
-      ); // Use gv.Node for graphview's Node
+class _GraphDisplayWidgetState extends State<GraphDisplayWidget> {
+  gv.Graph graphViewGraph = gv.Graph(); // Le graphe au format graphview
+  Map<dynamic, gv.Node> nodeMap =
+      {}; // Association de vos IDs de nœuds aux nœuds graphview
+
+  @override
+  void initState() {
+    super.initState();
+    _buildGraphViewGraph();
+  }
+
+  @override
+  void didUpdateWidget(covariant GraphDisplayWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reconstruire le graphe graphview si les données du graphe ont changé
+    if (oldWidget.graph != widget.graph ||
+        oldWidget.startNodeId != widget.startNodeId ||
+        oldWidget.endNodeId != widget.endNodeId ||
+        oldWidget.path != widget.path) {
+      _buildGraphViewGraph();
+    }
+  }
+
+  /// Convertit votre objet Graph personnalisé en un objet gv.Graph (graphview).
+  void _buildGraphViewGraph() {
+    graphViewGraph = gv.Graph();
+    nodeMap.clear();
+
+    // Ajouter les nœuds
+    for (var node in widget.graph.nodes.values) {
+      final gv.Node graphViewNode = gv.Node.Id(node.id);
       nodeMap[node.id] = graphViewNode;
       graphViewGraph.addNode(graphViewNode);
     }
 
-    // Add edges to GraphView's graph
-    for (var sourceId in graph.adjacencyList.keys) {
-      final sourceNode = nodeMap[sourceId];
+    // Ajouter les arêtes
+    for (var sourceId in widget.graph.adjacencyList.keys) {
+      final gv.Node? sourceNode = nodeMap[sourceId];
       if (sourceNode == null) continue;
 
-      for (var edge in graph.neighbors(sourceId)) {
-        final targetNode = nodeMap[edge.target];
+      for (var edge in widget.graph.neighbors(sourceId)) {
+        final gv.Node? targetNode = nodeMap[edge.target];
         if (targetNode == null) continue;
 
-        // Check if this edge is part of the shortest path for highlighting
+        // Déterminer si cette arête fait partie du chemin pour la mise en évidence
         bool isPathEdge = false;
-        if (path.length >= 2) {
-          for (int i = 0; i < path.length - 1; i++) {
-            if ((path[i] == sourceId && path[i + 1] == edge.target) ||
-                (path[i] == edge.target && path[i + 1] == sourceId)) {
+        if (widget.path.length >= 2) {
+          for (int i = 0; i < widget.path.length - 1; i++) {
+            // Vérifie les deux directions de l'arête si le chemin est non dirigé
+            if ((widget.path[i] == sourceId &&
+                    widget.path[i + 1] == edge.target) ||
+                (widget.path[i] == edge.target &&
+                    widget.path[i + 1] == sourceId)) {
               isPathEdge = true;
               break;
             }
           }
         }
 
-        // Add edge with data (e.g., length, path status)
+        // Ajouter l'arête avec les propriétés de peinture pour le style
         graphViewGraph.addEdge(
           sourceNode,
           targetNode,
@@ -67,53 +96,64 @@ class GraphDisplayWidget extends StatelessWidget {
                 : Colors.blueGrey.shade200
             ..strokeWidth = isPathEdge ? 5.0 : 2.0
             ..style = PaintingStyle.stroke,
-          // You can attach custom data to edges if needed, though not directly used for drawing here
-          // This example uses `paint` directly for simplicity.
-          // For text on edges, you might need to use a custom builder or overlay.
         );
       }
     }
+    setState(() {}); // Mettre à jour l'UI après la construction du graphe
+  }
 
-    // Removed the explicit layout algorithm definition.
-    // GraphView will now use its default layout.
+  @override
+  Widget build(BuildContext context) {
+    // Définir l'algorithme de disposition (layout) pour le graphe.
+    // FruchtermanReingoldLayout est un algorithme de force-directed qui donne une bonne distribution visuelle.
+    final gv.Algorithm algorithm = gv.FruchtermanReingoldAlgorithm();
 
-    return Scaffold(
-      // Use Scaffold to show SnackBars
-      body: Center(
+    return Center(
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.blueGrey.shade200, width: 1),
+          borderRadius: BorderRadius.circular(16),
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 8,
+              spreadRadius: 3,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        // InteractiveViewer permet de panner et zoomer le graphe
         child: InteractiveViewer(
-          constrained: false, // Allows content to be larger than viewport
-          boundaryMargin: const EdgeInsets.all(80), // Margin around the graph
-          minScale: 0.1,
-          maxScale: 2.5,
+          constrained: false, // Le contenu peut être plus grand que la fenêtre
+          boundaryMargin: const EdgeInsets.all(80), // Marge autour du graphe
+          minScale: 0.1, // Zoom minimum
+          maxScale: 2.5, // Zoom maximum
           child: gv.GraphView(
-            // Use gv.GraphView
             graph: graphViewGraph,
-            algorithm: gv.FruchtermanReingoldAlgorithm(),
+            algorithm: algorithm,
             builder: (gv.Node node) {
-              // Use gv.Node in builder
-              // This builder function creates the widget for each node
-              final nodeId = node.key!.value;
-              final graphNode = graph.getNode(nodeId);
+              // Cette fonction construit le widget visuel pour chaque nœud
+              final nodeId = node.key!.value; // L'ID de votre nœud
+              final graphNode = widget.graph.getNode(
+                nodeId,
+              ); // Votre objet GraphNode
 
+              // Déterminer la couleur du nœud en fonction de son statut
               Color nodeColor = Colors.blue.shade600;
-              if (nodeId == startNodeId) {
-                nodeColor = Colors.green.shade700; // Start node
-              } else if (nodeId == endNodeId) {
-                nodeColor = Colors.red.shade700; // End node
-              } else if (path.contains(nodeId)) {
-                nodeColor = Colors.orange.shade500; // Path node
+              if (nodeId == widget.startNodeId) {
+                nodeColor = Colors.green.shade700; // Nœud de départ
+              } else if (nodeId == widget.endNodeId) {
+                nodeColor = Colors.red.shade700; // Nœud d'arrivée
+              } else if (widget.path.contains(nodeId)) {
+                nodeColor =
+                    Colors.orange.shade500; // Nœud faisant partie du chemin
               }
 
               return InkWell(
                 onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Tapped Node: $nodeId (Name: ${graphNode?.name ?? 'N/A'})',
-                      ),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
+                  // Appeler la fonction de rappel quand un nœud est tapé
+                  widget.onNodeTapped?.call(nodeId);
                 },
                 child: Container(
                   padding: const EdgeInsets.all(8),
@@ -137,7 +177,7 @@ class GraphDisplayWidget extends StatelessWidget {
                       nodeId.toString().replaceAll(
                         'Node_',
                         '',
-                      ), // Simplify ID for display
+                      ), // Affiche l'ID simplifié
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -148,10 +188,6 @@ class GraphDisplayWidget extends StatelessWidget {
                 ),
               );
             },
-            // For edge rendering, graphview uses `Paint` objects directly.
-            // If you need custom widgets on edges (e.g., for length labels),
-            // you might need to use a custom edge builder or overlay, which is more complex.
-            // For now, we'll rely on the paint properties for path highlighting.
           ),
         ),
       ),
