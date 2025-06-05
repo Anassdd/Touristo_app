@@ -135,9 +135,7 @@ class _GraphDisplayWidgetState extends State<GraphDisplayWidget> {
             builder: (gv.Node node) {
               // Cette fonction construit le widget visuel pour chaque nœud
               final nodeId = node.key!.value; // L'ID de votre nœud
-              final graphNode = widget.graph.getNode(
-                nodeId,
-              ); // Votre objet GraphNode
+              widget.graph.getNode(nodeId); // Votre objet GraphNode
 
               // Déterminer la couleur du nœud en fonction de son statut
               Color nodeColor = Colors.blue.shade600;

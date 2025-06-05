@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:touristo/graph.dart'; // Votre classe Graph
 import 'package:touristo/algorithm.dart'; // Vos algorithmes (Dijkstra, Bellman-Ford, A*)
