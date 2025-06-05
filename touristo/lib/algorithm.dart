@@ -1,4 +1,8 @@
+import 'dart:math';
+
 import 'package:touristo/graph.dart';
+
+// DIJKSTRA SANS TAS
 
 Map<String, Map<dynamic, dynamic>> dijkstraSansTas(
   Graph graph,
@@ -39,10 +43,10 @@ Map<String, Map<dynamic, dynamic>> dijkstraSansTas(
     for (var edge in graph.neighbors(current)) {
       // si on n'a pas encore vue cet arc
       if (!visite.contains(edge.target)) {
-        double newDist = distances[current]! + edge.length;
+        double nouvDist = distances[current]! + edge.length;
         // mis a jour de chemin si il est plus court
-        if (newDist < distances[edge.target]!) {
-          distances[edge.target] = newDist;
+        if (nouvDist < distances[edge.target]!) {
+          distances[edge.target] = nouvDist;
           pred[edge.target] = current;
         }
       }
@@ -50,6 +54,152 @@ Map<String, Map<dynamic, dynamic>> dijkstraSansTas(
   }
   return {'distances': distances, 'predecesseurs': pred};
 }
+
+// DIJKTRA AVEC TAS
+Map<String, Map<dynamic, dynamic>> dijkstraAvecTas(
+  Graph graph,
+  dynamic depart,
+) {
+  final distances =
+      <
+        dynamic,
+        double
+      >{}; // le variables ou on store les distances (type : id, dist)
+  final pred =
+      <dynamic, dynamic>{}; // dictionnaire des predecesseurs (type : id , id)
+  final visitee = <dynamic>{};
+  // initialiser toutes les distances à l'infini
+  for (var nodeId in graph.nodes.keys) {
+    distances[nodeId] = double.infinity;
+  }
+  distances[depart] = 0.0;
+
+  // tas des noeuds a visiter avec leurs distances (type id : distance)
+  final tas = <MapEntry<dynamic, double>>[
+    MapEntry(depart, 0.0), //init de tas
+  ];
+
+  // tand que la tas n'est pas vide
+  while (tas.isNotEmpty) {
+    // trier la liste pour devenir un tas minimumm
+    tas.sort((a, b) => a.value.compareTo(b.value));
+    final teteTas = tas.removeAt(0); //prendre le min
+    final curr = teteTas.key;
+
+    if (visitee.contains(curr)) continue;
+    visitee.add(curr);
+
+    // on parcours tout les arcs voisins
+    for (final edge in graph.neighbors(curr)) {
+      if (!visitee.contains(edge.target)) {
+        final nouvDist = distances[curr]! + edge.length;
+        // mis a jour de chemin si il est plus court et ajout dans le tas
+        if (nouvDist < distances[edge.target]!) {
+          distances[edge.target] = nouvDist;
+          pred[edge.target] = curr;
+          tas.add(MapEntry(edge.target, nouvDist));
+        }
+      }
+    }
+  }
+  return {'distances': distances, 'predecesseurs': pred};
+}
+
+// BELMAN FORD
+Map<String, Map<dynamic, dynamic>> bellmanFord(Graph graph, dynamic source) {
+  final distances = <dynamic, double>{};
+  final pred = <dynamic, dynamic>{};
+  // init
+  for (var nodeId in graph.nodes.keys) {
+    distances[nodeId] = double.infinity;
+    pred[nodeId] = null;
+  }
+  distances[source] = 0.0;
+  // recuperer de toutes les arêtes
+  final tousEdge = graph.adjacencyList.values.expand((e) => e).toList();
+
+  // on loop V - 1 fois
+  for (int i = 0; i < graph.nodes.length - 1; i++) {
+    // on parcours tous les arcs
+    for (var edge in tousEdge) {
+      if (distances[edge.source] != double.infinity) {
+        final nouvDist = distances[edge.source]! + edge.length;
+        // comparaison et mis a jour des distances
+        if (nouvDist < distances[edge.target]!) {
+          distances[edge.target] = nouvDist;
+          pred[edge.target] = edge.source;
+        }
+      }
+    }
+  }
+
+  return {'distances': distances, 'predecesseurs': pred};
+}
+
+// A* avec heuristique distance eucludienne
+
+double heuristique(GraphNode a, GraphNode b) {
+  // distance eucludienne
+  final dx = a.lat - b.lat;
+  final dy = a.lon - b.lon;
+  return sqrt(dx * dx + dy * dy);
+}
+
+Map<String, Map<dynamic, dynamic>> Aetoile(
+  Graph graph,
+  dynamic depart,
+  dynamic arrive,
+) {
+  final distances = <dynamic, double>{};
+  final pred = <dynamic, dynamic>{};
+  final noeudsExplo = <dynamic>{}; // l'nsemble des noeuds a explorer
+
+  // initialisation
+
+  for (var id in graph.nodes.keys) {
+    distances[id] = double.infinity;
+  }
+  distances[depart] = 0.0;
+  noeudsExplo.add(depart);
+
+  // on explore tout les noeuds si on a pas trouver la destination
+  while (noeudsExplo.isNotEmpty) {
+    // trouver le noeud avec f(n) = g(n) + h(n) le plus petit
+    dynamic curr = noeudsExplo.first;
+    double minF =
+        distances[curr]! +
+        heuristique(graph.getNode(curr)!, graph.getNode(arrive)!);
+
+    for (var node in noeudsExplo) {
+      double f =
+          distances[node]! +
+          heuristique(graph.getNode(node)!, graph.getNode(arrive)!);
+      if (f < minF) {
+        minF = f;
+        curr = node;
+      }
+    }
+
+    // on est arrivé
+    if (curr == arrive) break;
+
+    noeudsExplo.remove(curr);
+
+    for (var edge in graph.neighbors(curr)) {
+      double nouvDist = distances[curr]! + edge.length;
+
+      if (nouvDist < distances[edge.target]!) {
+        distances[edge.target] = nouvDist;
+        pred[edge.target] = curr;
+        noeudsExplo.add(edge.target);
+      }
+    }
+  }
+
+  return {'distances': distances, 'predecesseurs': pred};
+}
+
+// CHEMIN
 
 List<dynamic> chemin(
   dynamic depart,
