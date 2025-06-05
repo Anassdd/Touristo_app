@@ -8,6 +8,9 @@ void main() {
   runApp(const MyApp());
 }
 
+String token =
+    'pk.eyJ1IjoiYW5hc3NhaWQiLCJhIjoiY21iaHRwZWFhMDFhYTJscjAxN2J1aGdqcSJ9.DuvzVIBDrYLB0-se6FhOxg';
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
@@ -52,6 +55,7 @@ class _MainAppState extends State<MainApp> {
     loadGraphData();
   }
 
+  // transforme le json à un graphe et creation de liste des musées
   Future<void> loadGraphData() async {
     final g = await loadGraphFromJson('assets/paris_walk_graph.json');
     final museumList = g.nodes.values
@@ -64,6 +68,9 @@ class _MainAppState extends State<MainApp> {
     });
   }
 
+  // ========================================================== Recherche et selection de Musée dans le TextEditor =======================================================
+
+  // filtre et cherche le nom de musée lors d'ecriture du nom de musée
   List<GraphNode> get filteredMuseums {
     return museums
         .where(
@@ -72,6 +79,7 @@ class _MainAppState extends State<MainApp> {
         .toList();
   }
 
+  // mis a jour de typing
   void onChanged(String value, bool isToField) {
     setState(() {
       isTypingTo = isToField;
@@ -98,6 +106,7 @@ class _MainAppState extends State<MainApp> {
     });
   }
 
+  // ========================================================== Reset Selection Button =======================================================
   void resetSelections() {
     setState(() {
       _fromController.clear();
@@ -112,8 +121,58 @@ class _MainAppState extends State<MainApp> {
     });
   }
 
+  // ========================================================== Selection et appeld'algorithme =======================================================
+  /*
   void computeRoute() {
-    if (graph == null || _fromId == null || _toId == null) return;
+    if (graph == null || _fromId == null || _toId == null) {
+      print("graph ou depart ou arrivée NULL");
+      return;
+    }
+
+    Map<String, Map<dynamic, dynamic>> result;
+    if (selectedAlgorithm == 'Dijkstra (Tas)') {
+      result = dijkstraAvecTas(graph!, _fromId);
+      print("Appel dijktraAvecTas");
+    } else if (selectedAlgorithm == 'Dijkstra (Sans Tas)') {
+      result = dijkstraSansTas(graph!, _fromId);
+      print("Appel dijktraSansTas");
+    } else if (selectedAlgorithm == 'Bellman-Ford') {
+      result = bellmanFord(graph!, _fromId);
+      print("Appel BellmanFord");
+    } else {
+      result = Aetoile(graph!, _fromId, _toId);
+      print("Appel A*");
+    }
+
+    final path = chemin(_fromId, _toId, result['predecesseurs']!);
+    print("Appel fonction chemin");
+
+    // DEBUG PRINT:
+    print('🧭 Path length: ${path.length}');
+    print('🧭 Path IDs: $path');
+
+    if (path.isEmpty) {
+      print('⚠️ No route found between $_fromId and $_toId');
+    }
+
+    setState(() {
+      routePoints = path.map((id) {
+        final node = graph!.getNode(id);
+        return LatLng(node!.lat, node.lon);
+      }).toList();
+    });
+  }
+*/
+  // DEBUG VERSION
+  void computeRoute() {
+    if (graph == null || _fromId == null || _toId == null) {
+      print('🚫 Missing data: graph or selected nodes are null');
+      return;
+    }
+
+    print('📍 From ID: $_fromId');
+    print('📍 To ID: $_toId');
+    print('📦 Algorithm: $selectedAlgorithm');
 
     Map<String, Map<dynamic, dynamic>> result;
     if (selectedAlgorithm == 'Dijkstra (Heap)') {
@@ -127,12 +186,17 @@ class _MainAppState extends State<MainApp> {
     }
 
     final path = chemin(_fromId, _toId, result['predecesseurs']!);
+    print('🧭 Path IDs: $path');
 
     setState(() {
       routePoints = path.map((id) {
         final node = graph!.getNode(id);
         return LatLng(node!.lat, node.lon);
       }).toList();
+      if (routePoints.isNotEmpty) {
+        print('🟣 Drawing polyline with ${routePoints.length} points');
+      }
+      print('📌 Route LatLngs: $routePoints');
     });
   }
 
@@ -143,14 +207,20 @@ class _MainAppState extends State<MainApp> {
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: MapOptions(center: LatLng(48.8566, 2.3522), zoom: 13),
+            options: MapOptions(
+              initialCenter: LatLng(
+                48.8566,
+                2.3522,
+              ), // Paris coordinates pour initialiser la carte
+              initialZoom: 13,
+            ),
             children: [
+              // visual background layer
               TileLayer(
                 urlTemplate:
                     'https://api.mapbox.com/styles/v1/{id}/tiles/256/{z}/{x}/{y}@2x?access_token={accessToken}',
                 additionalOptions: {
-                  'accessToken':
-                      'pk.eyJ1IjoiYW5hc3NhaWQiLCJhIjoiY21iaHRwZWFhMDFhYTJscjAxN2J1aGdqcSJ9.DuvzVIBDrYLB0-se6FhOxg',
+                  'accessToken': token,
                   'id': 'mapbox/streets-v11',
                 },
               ),
@@ -176,6 +246,7 @@ class _MainAppState extends State<MainApp> {
                               }
                             });
                           },
+                          // ICON DE MUSEE
                           child: const Icon(
                             Icons.location_on,
                             color: Colors.blue,
@@ -189,6 +260,7 @@ class _MainAppState extends State<MainApp> {
                       width: 45,
                       height: 45,
                       point: _fromLatLng!,
+                      // ICON DE DEPART
                       child: const Icon(
                         Icons.flag,
                         color: Colors.green,
@@ -200,6 +272,7 @@ class _MainAppState extends State<MainApp> {
                       width: 45,
                       height: 45,
                       point: _toLatLng!,
+                      // ICON D'ARRIVEE
                       child: const Icon(
                         Icons.flag,
                         color: Colors.red,
@@ -208,6 +281,7 @@ class _MainAppState extends State<MainApp> {
                     ),
                 ],
               ),
+              // PROBLEMS HERE
               if (routePoints.isNotEmpty)
                 PolylineLayer(
                   polylines: [

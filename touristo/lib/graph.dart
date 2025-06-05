@@ -73,6 +73,8 @@ class Graph {
 }
 
 /// initialisation du graphe par le code Json
+///
+/*
 Future<Graph> loadGraphFromJson(String assetPath) async {
   final jsonString = await rootBundle.loadString(assetPath);
   final Map<String, dynamic> jsonData = jsonDecode(jsonString);
@@ -87,6 +89,38 @@ Future<Graph> loadGraphFromJson(String assetPath) async {
   for (var edgeJson in jsonData['edges']) {
     final edge = GraphEdge.fromJson(edgeJson);
     graph.addEdge(edge);
+  }
+
+  return graph;
+}
+*/
+/// initialisation du graphe par le code Json en mode NON ORIENTÉ
+Future<Graph> loadGraphFromJson(String assetPath) async {
+  final jsonString = await rootBundle.loadString(assetPath);
+  final Map<String, dynamic> jsonData = jsonDecode(jsonString);
+
+  final graph = Graph();
+
+  // Ajouter tous les noeuds
+  for (var nodeJson in jsonData['nodes']) {
+    final node = GraphNode.fromJson(nodeJson);
+    graph.addNode(node);
+  }
+
+  // Ajouter chaque arête dans les deux sens (non orienté)
+  for (var edgeJson in jsonData['edges']) {
+    final edge = GraphEdge.fromJson(edgeJson);
+
+    // Arête directe
+    graph.addEdge(edge);
+
+    // Arête inverse (source <-> target)
+    final reversedEdge = GraphEdge(
+      source: edge.target,
+      target: edge.source,
+      length: edge.length,
+    );
+    graph.addEdge(reversedEdge);
   }
 
   return graph;
