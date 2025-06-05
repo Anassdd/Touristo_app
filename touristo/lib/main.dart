@@ -29,6 +29,14 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
+  bool isLoading = false;
+  double? routeDistance;
+  double? routeDuration;
+  List<TextEditingController> stopControllers = [];
+  List<FocusNode> stopFocusNodes = [];
+  List<dynamic> stopIds = [];
+  List<LatLng?> stopLatLngs = [];
+  List<GraphNode?> intermediateStops = [];
   final DraggableScrollableController _draggableController =
       DraggableScrollableController();
   double _sheetExtent = 0.35;
@@ -66,6 +74,15 @@ class _MainAppState extends State<MainApp> {
     });
   }
 
+  void addStopField() {
+    setState(() {
+      stopControllers.add(TextEditingController());
+      stopFocusNodes.add(FocusNode());
+      stopIds.add(null);
+      stopLatLngs.add(null);
+    });
+  }
+
   // transforme le json à un graphe et creation de liste des musées
   Future<void> loadGraphData() async {
     final g = await loadGraphFromJson('assets/paris_walk_graph.json');
@@ -91,17 +108,22 @@ class _MainAppState extends State<MainApp> {
   }
 
   // mis a jour de typing
-  void onChanged(String value, bool isToField) {
+  void onChanged(String value, bool isToField, [int? stopIndex]) {
     setState(() {
       isTypingTo = isToField;
       currentTyping = value;
     });
   }
 
-  void onSuggestionTap(GraphNode museum) {
+  void onSuggestionTap(GraphNode museum, [int? stopIndex]) {
     setState(() {
       final latLng = LatLng(museum.lat, museum.lon);
-      if (isTypingTo) {
+      if (stopIndex != null) {
+        stopControllers[stopIndex].text = museum.name!;
+        stopLatLngs[stopIndex] = latLng;
+        stopIds[stopIndex] = museum.id;
+        stopFocusNodes[stopIndex].unfocus();
+      } else if (isTypingTo) {
         _toController.text = museum.name!;
         _toLatLng = latLng;
         _toId = museum.id;
@@ -127,6 +149,8 @@ class _MainAppState extends State<MainApp> {
       _fromId = null;
       _toId = null;
       routePoints.clear();
+      routeDistance = null; //  Clear distance
+      routeDuration = null; //  Clear duration
       currentTyping = '';
       _mapController.move(LatLng(48.8566, 2.3522), 13);
     });
@@ -158,16 +182,41 @@ class _MainAppState extends State<MainApp> {
     final path = chemin(_fromId, _toId, result['predecesseurs']!);
     print('🧭 Path IDs: $path');
 
+    final distanceMap = result['distances']!;
+    var totalDistance = distanceMap[_toId] / 1000 ?? 0.0;
+    List<LatLng> points = [];
+
+    for (int i = 0; i < path.length - 1; i++) {
+      final nodeA = graph!.getNode(path[i])!;
+      final nodeB = graph!.getNode(path[i + 1])!;
+      totalDistance += Distance().as(
+        LengthUnit.Kilometer,
+        LatLng(nodeA.lat, nodeA.lon),
+        LatLng(nodeB.lat, nodeB.lon),
+      );
+      points.add(LatLng(nodeA.lat, nodeA.lon));
+    }
+
+    // Add last point
+    if (path.isNotEmpty) {
+      final lastNode = graph!.getNode(path.last)!;
+      points.add(LatLng(lastNode.lat, lastNode.lon));
+    }
+
+    final estimatedTime =
+        totalDistance / 5 * 60; // assuming 5km/h walking speed
+
     setState(() {
       routePoints = path.map((id) {
         final node = graph!.getNode(id);
         return LatLng(node!.lat, node.lon);
       }).toList();
-      if (routePoints.isNotEmpty) {
-        print('🟣 Drawing polyline with ${routePoints.length} points');
-      }
-      print('📌 Route LatLngs: $routePoints');
+      routeDistance = totalDistance;
+      routeDuration = estimatedTime;
     });
+
+    print('📏 Distance: ${totalDistance.toStringAsFixed(2)} km');
+    print('⏱️ Time: ${estimatedTime.toStringAsFixed(1)} min');
   }
 
   @override
@@ -234,9 +283,9 @@ class _MainAppState extends State<MainApp> {
                       point: _fromLatLng!,
                       // ICON DE DEPART
                       child: const Icon(
-                        Icons.location_pin,
+                        Icons.my_location,
                         color: Color.fromARGB(255, 36, 36, 36),
-                        size: 40,
+                        size: 30,
                       ),
                     ),
                   if (_toLatLng != null)
@@ -299,20 +348,6 @@ class _MainAppState extends State<MainApp> {
                 controller: scrollController,
                 padding: const EdgeInsets.only(bottom: 16),
                 children: [
-                  Center(
-                    child: Container(
-                      width: 40, // Width of the bar
-                      height: 5, // Thickness of the bar
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[400],
-                        borderRadius: BorderRadius.circular(
-                          10,
-                        ), // Rounded corners
-                      ),
-                    ),
-                  ),
-
                   const Text(
                     'Choose Algorithm:',
                     style: TextStyle(fontWeight: FontWeight.bold),
@@ -343,6 +378,7 @@ class _MainAppState extends State<MainApp> {
                   ),
                   const SizedBox(height: 12),
 
+                  // === FROM FIELD ===
                   TextField(
                     controller: _fromController,
                     focusNode: _fromFocus,
@@ -355,6 +391,57 @@ class _MainAppState extends State<MainApp> {
                   ),
                   const SizedBox(height: 12),
 
+                  // === STOPS FIELD LIST ===
+                  ...List.generate(stopControllers.length, (i) {
+                    return Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: stopControllers[i],
+                                focusNode: stopFocusNodes[i],
+                                onChanged: (v) => onChanged(v, false, i),
+                                decoration: InputDecoration(
+                                  labelText: 'Stop ${i + 1}',
+                                  prefixIcon: const Icon(
+                                    Icons.stop_circle_outlined,
+                                  ),
+                                  border: const OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  stopControllers.removeAt(i);
+                                  stopFocusNodes.removeAt(i);
+                                  stopLatLngs.removeAt(i);
+                                  stopIds.removeAt(i);
+                                });
+                              },
+                              icon: const Icon(
+                                Icons.delete_forever,
+                                color: Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (currentTyping.isNotEmpty)
+                          ...filteredMuseums.map(
+                            (m) => ListTile(
+                              title: Text(m.name!),
+                              onTap: () => onSuggestionTap(m, i),
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                      ],
+                    );
+                  }),
+
+                  const SizedBox(height: 12),
+
+                  // === TO FIELD ===
                   TextField(
                     controller: _toController,
                     focusNode: _toFocus,
@@ -375,20 +462,52 @@ class _MainAppState extends State<MainApp> {
                     ),
 
                   const SizedBox(height: 16),
-
                   ElevatedButton(
                     onPressed: computeRoute,
+                    child: const Text("Calculate Route"),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
                       foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(48),
                     ),
-                    child: const Text("Calculate Route"),
                   ),
+                  if (routeDistance != null && routeDuration != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '📏 Distance: ${routeDistance!.toStringAsFixed(2)} km',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            '⏱️ Estimated Time: ${routeDuration!.toStringAsFixed(0)} min',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: 10),
                   OutlinedButton(
                     onPressed: resetSelections,
                     child: const Text("Reset"),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: addStopField,
+                    icon: const Icon(Icons.add),
+                    label: const Text("Add Stop"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+                      foregroundColor: const Color.fromARGB(255, 0, 0, 0),
+                    ),
                   ),
                 ],
               ),
