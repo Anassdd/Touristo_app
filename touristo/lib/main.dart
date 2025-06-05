@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'graph.dart'; // Your graph.dart model
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'graph.dart';
 
 void main() {
   runApp(const MyApp());
@@ -19,7 +22,6 @@ class MyApp extends StatelessWidget {
 
 class MainApp extends StatefulWidget {
   const MainApp({super.key});
-
   @override
   State<MainApp> createState() => _MainAppState();
 }
@@ -29,11 +31,15 @@ class _MainAppState extends State<MainApp> {
   final TextEditingController _toController = TextEditingController();
   final FocusNode _fromFocus = FocusNode();
   final FocusNode _toFocus = FocusNode();
+  final MapController _mapController = MapController();
 
   Graph? graph;
   List<GraphNode> museums = [];
   String currentTyping = '';
   bool isTypingTo = false;
+
+  LatLng? _fromLatLng;
+  LatLng? _toLatLng;
 
   @override
   void initState() {
@@ -72,12 +78,26 @@ class _MainAppState extends State<MainApp> {
     setState(() {
       if (isTypingTo) {
         _toController.text = museum.name!;
+        _toLatLng = LatLng(museum.lat, museum.lon);
         _toFocus.unfocus();
       } else {
         _fromController.text = museum.name!;
+        _fromLatLng = LatLng(museum.lat, museum.lon);
         _fromFocus.unfocus();
       }
       currentTyping = '';
+      _mapController.move(LatLng(museum.lat, museum.lon), 15);
+    });
+  }
+
+  void resetSelections() {
+    setState(() {
+      _fromController.clear();
+      _toController.clear();
+      _fromLatLng = null;
+      _toLatLng = null;
+      currentTyping = '';
+      _mapController.move(LatLng(48.8566, 2.3522), 13);
     });
   }
 
@@ -86,10 +106,76 @@ class _MainAppState extends State<MainApp> {
     return Scaffold(
       body: Stack(
         children: [
-          // Background placeholder (can be replaced by map)
-          Container(color: Colors.blueGrey[50]),
+          // 🌍 Map
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(center: LatLng(48.8566, 2.3522), zoom: 13),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    'https://api.mapbox.com/styles/v1/{id}/tiles/256/{z}/{x}/{y}@2x?access_token={accessToken}',
+                additionalOptions: {
+                  'accessToken':
+                      'pk.eyJ1IjoiYW5hc3NhaWQiLCJhIjoiY21iaHRwZWFhMDFhYTJscjAxN2J1aGdqcSJ9.DuvzVIBDrYLB0-se6FhOxg',
+                  'id': 'mapbox/streets-v11',
+                },
+              ),
+              MarkerLayer(
+                markers: [
+                  if (_fromLatLng == null || _toLatLng == null)
+                    ...museums.map(
+                      (m) => Marker(
+                        width: 30,
+                        height: 30,
+                        point: LatLng(m.lat, m.lon),
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              if (_fromLatLng == null) {
+                                _fromController.text = m.name!;
+                                _fromLatLng = LatLng(m.lat, m.lon);
+                              } else if (_toLatLng == null) {
+                                _toController.text = m.name!;
+                                _toLatLng = LatLng(m.lat, m.lon);
+                              }
+                            });
+                          },
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Colors.blue,
+                            size: 26,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_fromLatLng != null)
+                    Marker(
+                      width: 45,
+                      height: 45,
+                      point: _fromLatLng!,
+                      child: const Icon(
+                        Icons.flag,
+                        color: Colors.green,
+                        size: 40,
+                      ),
+                    ),
+                  if (_toLatLng != null)
+                    Marker(
+                      width: 45,
+                      height: 45,
+                      point: _toLatLng!,
+                      child: const Icon(
+                        Icons.flag,
+                        color: Colors.red,
+                        size: 40,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
 
-          // Scrollable Bottom Panel
+          // 🧾 Bottom Sheet
           DraggableScrollableSheet(
             initialChildSize: 0.3,
             minChildSize: 0.2,
@@ -104,6 +190,17 @@ class _MainAppState extends State<MainApp> {
               child: ListView(
                 controller: scrollController,
                 children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[400],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
                   const Text(
                     'Set your destination',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -146,9 +243,7 @@ class _MainAppState extends State<MainApp> {
 
                   ElevatedButton(
                     onPressed: () {
-                      final from = _fromController.text;
-                      final to = _toController.text;
-                      if (from.isEmpty || to.isEmpty) {
+                      if (_fromLatLng == null || _toLatLng == null) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text("Please select both locations"),
@@ -156,10 +251,35 @@ class _MainAppState extends State<MainApp> {
                         );
                         return;
                       }
+
+                      final sw = LatLng(
+                        _fromLatLng!.latitude < _toLatLng!.latitude
+                            ? _fromLatLng!.latitude
+                            : _toLatLng!.latitude,
+                        _fromLatLng!.longitude < _toLatLng!.longitude
+                            ? _fromLatLng!.longitude
+                            : _toLatLng!.longitude,
+                      );
+                      final ne = LatLng(
+                        _fromLatLng!.latitude > _toLatLng!.latitude
+                            ? _fromLatLng!.latitude
+                            : _toLatLng!.latitude,
+                        _fromLatLng!.longitude > _toLatLng!.longitude
+                            ? _fromLatLng!.longitude
+                            : _toLatLng!.longitude,
+                      );
+                      final bounds = LatLngBounds(sw, ne);
+                      _mapController.fitBounds(
+                        bounds,
+                        options: const FitBoundsOptions(
+                          padding: EdgeInsets.all(40),
+                        ),
+                      );
+
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Ready to calculate route from $from to $to',
+                            'Showing route from ${_fromController.text} to ${_toController.text}',
                           ),
                         ),
                       );
@@ -170,6 +290,17 @@ class _MainAppState extends State<MainApp> {
                       minimumSize: const Size.fromHeight(48),
                     ),
                     child: const Text("Confirm destination"),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  OutlinedButton(
+                    onPressed: resetSelections,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.black,
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                    child: const Text("Reset"),
                   ),
                 ],
               ),
