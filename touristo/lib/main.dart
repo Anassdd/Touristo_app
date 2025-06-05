@@ -29,6 +29,10 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
+  final DraggableScrollableController _draggableController =
+      DraggableScrollableController();
+  double _sheetExtent = 0.35;
+  bool showResetButton = true;
   final TextEditingController _fromController = TextEditingController();
   final TextEditingController _toController = TextEditingController();
   final FocusNode _fromFocus = FocusNode();
@@ -50,9 +54,16 @@ class _MainAppState extends State<MainApp> {
   String selectedAlgorithm = 'Dijkstra (Heap)';
 
   @override
+  @override
   void initState() {
     super.initState();
     loadGraphData();
+    _draggableController.addListener(() {
+      setState(() {
+        _sheetExtent = _draggableController.size;
+        showResetButton = _sheetExtent < 0.5;
+      });
+    });
   }
 
   // transforme le json à un graphe et creation de liste des musées
@@ -122,47 +133,6 @@ class _MainAppState extends State<MainApp> {
   }
 
   // ========================================================== Selection et appeld'algorithme =======================================================
-  /*
-  void computeRoute() {
-    if (graph == null || _fromId == null || _toId == null) {
-      print("graph ou depart ou arrivée NULL");
-      return;
-    }
-
-    Map<String, Map<dynamic, dynamic>> result;
-    if (selectedAlgorithm == 'Dijkstra (Tas)') {
-      result = dijkstraAvecTas(graph!, _fromId);
-      print("Appel dijktraAvecTas");
-    } else if (selectedAlgorithm == 'Dijkstra (Sans Tas)') {
-      result = dijkstraSansTas(graph!, _fromId);
-      print("Appel dijktraSansTas");
-    } else if (selectedAlgorithm == 'Bellman-Ford') {
-      result = bellmanFord(graph!, _fromId);
-      print("Appel BellmanFord");
-    } else {
-      result = Aetoile(graph!, _fromId, _toId);
-      print("Appel A*");
-    }
-
-    final path = chemin(_fromId, _toId, result['predecesseurs']!);
-    print("Appel fonction chemin");
-
-    // DEBUG PRINT:
-    print('🧭 Path length: ${path.length}');
-    print('🧭 Path IDs: $path');
-
-    if (path.isEmpty) {
-      print('⚠️ No route found between $_fromId and $_toId');
-    }
-
-    setState(() {
-      routePoints = path.map((id) {
-        final node = graph!.getNode(id);
-        return LatLng(node!.lat, node.lon);
-      }).toList();
-    });
-  }
-*/
   // DEBUG VERSION
   void computeRoute() {
     if (graph == null || _fromId == null || _toId == null) {
@@ -227,10 +197,11 @@ class _MainAppState extends State<MainApp> {
               MarkerLayer(
                 markers: [
                   if (_fromLatLng == null || _toLatLng == null)
-                    ...museums.map(
-                      (m) => Marker(
-                        width: 30,
-                        height: 30,
+                    ...museums.map((m) {
+                      final isSelected = m.id == _fromId || m.id == _toId;
+                      return Marker(
+                        width: isSelected ? 50 : 30,
+                        height: isSelected ? 50 : 30,
                         point: LatLng(m.lat, m.lon),
                         child: GestureDetector(
                           onTap: () {
@@ -246,15 +217,16 @@ class _MainAppState extends State<MainApp> {
                               }
                             });
                           },
-                          // ICON DE MUSEE
-                          child: const Icon(
+                          child: Icon(
                             Icons.location_on,
-                            color: Colors.blue,
-                            size: 26,
+                            color: isSelected
+                                ? const Color.fromARGB(255, 15, 14, 89)
+                                : const Color.fromARGB(255, 15, 14, 83),
+                            size: isSelected ? 40 : 26,
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    }),
                   if (_fromLatLng != null)
                     Marker(
                       width: 45,
@@ -262,8 +234,8 @@ class _MainAppState extends State<MainApp> {
                       point: _fromLatLng!,
                       // ICON DE DEPART
                       child: const Icon(
-                        Icons.flag,
-                        color: Colors.green,
+                        Icons.location_pin,
+                        color: Color.fromARGB(255, 36, 36, 36),
                         size: 40,
                       ),
                     ),
@@ -274,29 +246,45 @@ class _MainAppState extends State<MainApp> {
                       point: _toLatLng!,
                       // ICON D'ARRIVEE
                       child: const Icon(
-                        Icons.flag,
-                        color: Colors.red,
+                        Icons.location_pin,
+                        color: Color.fromARGB(255, 36, 36, 36),
                         size: 40,
                       ),
                     ),
                 ],
               ),
-              // PROBLEMS HERE
+
               if (routePoints.isNotEmpty)
                 PolylineLayer(
                   polylines: [
                     Polyline(
                       points: routePoints,
                       strokeWidth: 5,
-                      color: Colors.purple,
+                      color: const Color.fromARGB(255, 41, 39, 176),
                     ),
                   ],
                 ),
             ],
           ),
-
+          Positioned(
+            right: 20,
+            bottom: _sheetExtent * MediaQuery.of(context).size.height + 20,
+            child: Visibility(
+              visible: showResetButton,
+              child: FloatingActionButton(
+                heroTag: "resetBtn",
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                elevation: 4,
+                mini: true,
+                onPressed: resetSelections,
+                child: const Icon(Icons.refresh),
+              ),
+            ),
+          ),
           // Bottom Sheet
           DraggableScrollableSheet(
+            controller: _draggableController,
             initialChildSize: 0.35,
             minChildSize: 0.2,
             maxChildSize: 0.9,
@@ -309,7 +297,22 @@ class _MainAppState extends State<MainApp> {
               ),
               child: ListView(
                 controller: scrollController,
+                padding: const EdgeInsets.only(bottom: 16),
                 children: [
+                  Center(
+                    child: Container(
+                      width: 40, // Width of the bar
+                      height: 5, // Thickness of the bar
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[400],
+                        borderRadius: BorderRadius.circular(
+                          10,
+                        ), // Rounded corners
+                      ),
+                    ),
+                  ),
+
                   const Text(
                     'Choose Algorithm:',
                     style: TextStyle(fontWeight: FontWeight.bold),
@@ -375,12 +378,12 @@ class _MainAppState extends State<MainApp> {
 
                   ElevatedButton(
                     onPressed: computeRoute,
-                    child: const Text("Calculate Route"),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
                       foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(48),
                     ),
+                    child: const Text("Calculate Route"),
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton(
