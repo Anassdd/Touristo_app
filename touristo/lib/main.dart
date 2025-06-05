@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'graph.dart';
+import 'algorithm.dart'; // import your algorithm file
 
 void main() {
   runApp(const MyApp());
@@ -40,6 +41,12 @@ class _MainAppState extends State<MainApp> {
 
   LatLng? _fromLatLng;
   LatLng? _toLatLng;
+  dynamic _fromId;
+  dynamic _toId;
+
+  List<LatLng> routePoints = [];
+
+  String selectedAlgorithm = 'Dijkstra (Heap)';
 
   @override
   void initState() {
@@ -76,17 +83,20 @@ class _MainAppState extends State<MainApp> {
 
   void onSuggestionTap(GraphNode museum) {
     setState(() {
+      final latLng = LatLng(museum.lat, museum.lon);
       if (isTypingTo) {
         _toController.text = museum.name!;
-        _toLatLng = LatLng(museum.lat, museum.lon);
+        _toLatLng = latLng;
+        _toId = museum.id;
         _toFocus.unfocus();
       } else {
         _fromController.text = museum.name!;
-        _fromLatLng = LatLng(museum.lat, museum.lon);
+        _fromLatLng = latLng;
+        _fromId = museum.id;
         _fromFocus.unfocus();
       }
       currentTyping = '';
-      _mapController.move(LatLng(museum.lat, museum.lon), 15);
+      _mapController.move(latLng, 15);
     });
   }
 
@@ -96,8 +106,35 @@ class _MainAppState extends State<MainApp> {
       _toController.clear();
       _fromLatLng = null;
       _toLatLng = null;
+      _fromId = null;
+      _toId = null;
+      routePoints.clear();
       currentTyping = '';
       _mapController.move(LatLng(48.8566, 2.3522), 13);
+    });
+  }
+
+  void computeRoute() {
+    if (graph == null || _fromId == null || _toId == null) return;
+
+    Map<String, Map<dynamic, dynamic>> result;
+    if (selectedAlgorithm == 'Dijkstra (Heap)') {
+      result = dijkstraAvecTas(graph!, _fromId);
+    } else if (selectedAlgorithm == 'Dijkstra (No Heap)') {
+      result = dijkstraSansTas(graph!, _fromId);
+    } else if (selectedAlgorithm == 'Bellman-Ford') {
+      result = bellmanFord(graph!, _fromId);
+    } else {
+      result = Aetoile(graph!, _fromId, _toId);
+    }
+
+    final path = chemin(_fromId, _toId, result['predecesseurs']!);
+
+    setState(() {
+      routePoints = path.map((id) {
+        final node = graph!.getNode(id);
+        return LatLng(node!.lat, node.lon);
+      }).toList();
     });
   }
 
@@ -106,7 +143,6 @@ class _MainAppState extends State<MainApp> {
     return Scaffold(
       body: Stack(
         children: [
-          // 🌍 Map
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(center: LatLng(48.8566, 2.3522), zoom: 13),
@@ -132,11 +168,13 @@ class _MainAppState extends State<MainApp> {
                           onTap: () {
                             setState(() {
                               if (_fromLatLng == null) {
-                                _fromController.text = m.name!;
                                 _fromLatLng = LatLng(m.lat, m.lon);
+                                _fromId = m.id;
+                                _fromController.text = m.name!;
                               } else if (_toLatLng == null) {
-                                _toController.text = m.name!;
                                 _toLatLng = LatLng(m.lat, m.lon);
+                                _toId = m.id;
+                                _toController.text = m.name!;
                               }
                             });
                           },
@@ -172,14 +210,24 @@ class _MainAppState extends State<MainApp> {
                     ),
                 ],
               ),
+              if (routePoints.isNotEmpty)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: routePoints,
+                      strokeWidth: 5,
+                      color: Colors.purple,
+                    ),
+                  ],
+                ),
             ],
           ),
 
-          // 🧾 Bottom Sheet
+          // Bottom Sheet
           DraggableScrollableSheet(
-            initialChildSize: 0.3,
+            initialChildSize: 0.35,
             minChildSize: 0.2,
-            maxChildSize: 0.85,
+            maxChildSize: 0.9,
             builder: (_, scrollController) => Container(
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(
@@ -190,20 +238,33 @@ class _MainAppState extends State<MainApp> {
               child: ListView(
                 controller: scrollController,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[400],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
                   const Text(
-                    'Set your destination',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    'Choose Algorithm:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  DropdownButton<String>(
+                    value: selectedAlgorithm,
+                    isExpanded: true,
+                    onChanged: (value) =>
+                        setState(() => selectedAlgorithm = value!),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Dijkstra (Heap)',
+                        child: Text('Dijkstra (Heap)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Dijkstra (No Heap)',
+                        child: Text('Dijkstra (No Heap)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Bellman-Ford',
+                        child: Text('Bellman-Ford'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'A*',
+                        child: Text('A* (A étoile)'),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
 
@@ -229,7 +290,6 @@ class _MainAppState extends State<MainApp> {
                       border: OutlineInputBorder(),
                     ),
                   ),
-                  const SizedBox(height: 12),
 
                   if (currentTyping.isNotEmpty)
                     ...filteredMuseums.map(
@@ -239,67 +299,20 @@ class _MainAppState extends State<MainApp> {
                       ),
                     ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
                   ElevatedButton(
-                    onPressed: () {
-                      if (_fromLatLng == null || _toLatLng == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Please select both locations"),
-                          ),
-                        );
-                        return;
-                      }
-
-                      final sw = LatLng(
-                        _fromLatLng!.latitude < _toLatLng!.latitude
-                            ? _fromLatLng!.latitude
-                            : _toLatLng!.latitude,
-                        _fromLatLng!.longitude < _toLatLng!.longitude
-                            ? _fromLatLng!.longitude
-                            : _toLatLng!.longitude,
-                      );
-                      final ne = LatLng(
-                        _fromLatLng!.latitude > _toLatLng!.latitude
-                            ? _fromLatLng!.latitude
-                            : _toLatLng!.latitude,
-                        _fromLatLng!.longitude > _toLatLng!.longitude
-                            ? _fromLatLng!.longitude
-                            : _toLatLng!.longitude,
-                      );
-                      final bounds = LatLngBounds(sw, ne);
-                      _mapController.fitBounds(
-                        bounds,
-                        options: const FitBoundsOptions(
-                          padding: EdgeInsets.all(40),
-                        ),
-                      );
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Showing route from ${_fromController.text} to ${_toController.text}',
-                          ),
-                        ),
-                      );
-                    },
+                    onPressed: computeRoute,
+                    child: const Text("Calculate Route"),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
                       foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(48),
                     ),
-                    child: const Text("Confirm destination"),
                   ),
-
                   const SizedBox(height: 10),
-
                   OutlinedButton(
                     onPressed: resetSelections,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.black,
-                      minimumSize: const Size.fromHeight(48),
-                    ),
                     child: const Text("Reset"),
                   ),
                 ],
