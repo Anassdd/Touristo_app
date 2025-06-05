@@ -55,6 +55,7 @@ class _MainAppState extends State<MainApp> {
 
   LatLng? _fromLatLng;
   LatLng? _toLatLng;
+  LatLng? _customDepartureLatLng;
   dynamic _fromId;
   dynamic _toId;
 
@@ -145,6 +146,7 @@ class _MainAppState extends State<MainApp> {
     setState(() {
       _fromController.clear();
       _toController.clear();
+      _customDepartureLatLng = null;
       _fromLatLng = null;
       _toLatLng = null;
       _fromId = null;
@@ -153,7 +155,7 @@ class _MainAppState extends State<MainApp> {
       routeDistance = null; //  Clear distance
       routeDuration = null; //  Clear duration
       currentTyping = '';
-      _mapController.move(LatLng(48.8566, 2.3522), 13);
+      _animateMapTo(LatLng(48.8566, 2.3522), 13);
     });
   }
 
@@ -184,6 +186,7 @@ class _MainAppState extends State<MainApp> {
 
   void _animateMapTo(LatLng targetCenter, double targetZoom) async {
     const int steps = 30;
+
     const Duration stepDuration = Duration(milliseconds: 16); // ~60fps
 
     final currentCenter = _mapController.camera.center;
@@ -280,6 +283,47 @@ class _MainAppState extends State<MainApp> {
     print('⏱️ Time: ${estimatedTime.toStringAsFixed(1)} min');
   }
 
+  void _handleCustomDeparture(LatLng latLng) {
+    if (graph == null) return;
+
+    const customId = 'custom_departure';
+    final nearestNode = graph!.findNearestNode(
+      latLng.latitude,
+      latLng.longitude,
+    );
+    if (nearestNode == null) return;
+
+    final customNode = GraphNode(
+      id: customId,
+      lat: latLng.latitude,
+      lon: latLng.longitude,
+      name: 'Custom Location',
+      type: 'custom',
+    );
+
+    final distance = Distance().as(
+      LengthUnit.Meter,
+      latLng,
+      LatLng(nearestNode.lat, nearestNode.lon),
+    );
+
+    setState(() {
+      _customDepartureLatLng = latLng;
+      _fromLatLng = latLng;
+      _fromId = customId;
+
+      _fromController.text = 'Custom Location'; // THIS LINE FIXES THE UI
+
+      graph!.addNode(customNode);
+      graph!.addEdge(
+        GraphEdge(source: customId, target: nearestNode.id, length: distance),
+      );
+      graph!.addEdge(
+        GraphEdge(source: nearestNode.id, target: customId, length: distance),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -288,11 +332,11 @@ class _MainAppState extends State<MainApp> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: LatLng(
-                48.8566,
-                2.3522,
-              ), // Paris coordinates pour initialiser la carte
+              initialCenter: LatLng(48.8566, 2.3522),
               initialZoom: 13,
+              onTap: (tapPosition, latLng) {
+                _handleCustomDeparture(latLng);
+              },
             ),
             children: [
               // visual background layer
@@ -306,6 +350,17 @@ class _MainAppState extends State<MainApp> {
               ),
               MarkerLayer(
                 markers: [
+                  if (_customDepartureLatLng != null)
+                    Marker(
+                      point: _customDepartureLatLng!,
+                      width: 40,
+                      height: 40,
+                      child: const Icon(
+                        Icons.my_location,
+                        color: Colors.transparent,
+                        size: 40,
+                      ),
+                    ),
                   if (_fromLatLng == null || _toLatLng == null)
                     ...museums.map((m) {
                       final isSelected = m.id == _fromId || m.id == _toId;

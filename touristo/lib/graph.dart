@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/services.dart' show rootBundle;
 
 /// Noeud du graphe
@@ -53,6 +54,20 @@ class Graph {
   // cette structure ressemble très à la structure de graphe fait en Python où on utilise des dictionnaires pour representer les graphes
   final Map<dynamic, GraphNode> nodes = {};
   final Map<dynamic, List<GraphEdge>> adjacencyList = {};
+  GraphNode? findNearestNode(double latitude, double longitude) {
+    GraphNode? nearest;
+    double minDist = double.infinity;
+    for (var node in nodes.values) {
+      final dist = math.sqrt(
+        math.pow(node.lat - latitude, 2) + math.pow(node.lon - longitude, 2),
+      );
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = node;
+      }
+    }
+    return nearest;
+  }
 
   void addNode(GraphNode node) {
     nodes[node.id] = node;
