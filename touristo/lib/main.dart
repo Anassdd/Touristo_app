@@ -32,6 +32,7 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
+  int _nextStopIndexToFill = 0;
   double? routeDistance;
   double? routeDuration;
   List<TextEditingController> stopControllers = [];
@@ -86,6 +87,18 @@ class _MainAppState extends State<MainApp> {
     });
   }
 
+  List<LatLng> getAllSelectedPoints() {
+    final points = <LatLng>[];
+
+    if (_fromLatLng != null) points.add(_fromLatLng!);
+    for (final stop in stopLatLngs) {
+      if (stop != null) points.add(stop);
+    }
+    if (_toLatLng != null) points.add(_toLatLng!);
+
+    return points;
+  }
+
   // transforme le json à un graphe et creation de liste des musées
   Future<void> loadGraphData() async {
     final g = await loadGraphFromJson('assets/paris_walk_graph.json');
@@ -138,6 +151,7 @@ class _MainAppState extends State<MainApp> {
         _fromFocus.unfocus();
       }
       currentTyping = '';
+      _fitMapToSelectedMuseums();
       _mapController.move(latLng, 15);
     });
   }
@@ -146,6 +160,7 @@ class _MainAppState extends State<MainApp> {
   void resetSelections() {
     /* a reset function that clears and restart everything */
     setState(() {
+      _nextStopIndexToFill = 0;
       _fromController.clear();
       _toController.clear();
       _customDepartureLatLng = null;
@@ -271,25 +286,46 @@ class _MainAppState extends State<MainApp> {
       }).toList();
       routeDistance = totalDistance;
       routeDuration = estimatedTime;
-      if (routePoints.length > 1) {
-        final bounds = LatLngBounds.fromPoints(routePoints);
+      final allPoints = getAllSelectedPoints();
+      if (allPoints.length > 1) {
+        final bounds = LatLngBounds.fromPoints(allPoints);
         final center = bounds.center;
         final zoomLevel = _calculateZoomFromBounds(
           bounds,
           MediaQuery.of(context).size,
         );
+
         _draggableController.animateTo(
-          0.2, // Or any value >= minChildSize
+          0.2,
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeOut,
         );
 
         _animateMapTo(center, zoomLevel);
+        _fitMapToSelectedMuseums();
       }
     });
 
     print(' Distance: ${totalDistance.toStringAsFixed(2)} km');
     print(' Time: ${estimatedTime.toStringAsFixed(1)} min');
+  }
+
+  void _fitMapToSelectedMuseums() {
+    final points = <LatLng>[];
+
+    if (_fromLatLng != null) points.add(_fromLatLng!);
+    for (final stop in stopLatLngs) {
+      if (stop != null) points.add(stop);
+    }
+    if (_toLatLng != null) points.add(_toLatLng!);
+
+    if (points.length < 2) return;
+
+    final bounds = LatLngBounds.fromPoints(points);
+    final center = bounds.center;
+    final zoom = _calculateZoomFromBounds(bounds, MediaQuery.of(context).size);
+
+    _animateMapTo(center, zoom);
   }
 
   void _handleCustomDeparture(LatLng latLng) {
@@ -372,7 +408,10 @@ class _MainAppState extends State<MainApp> {
                     ),
                   if (_fromLatLng == null || _toLatLng == null)
                     ...museums.map((m) {
-                      final isSelected = m.id == _fromId || m.id == _toId;
+                      final isSelected =
+                          m.id == _fromId ||
+                          m.id == _toId ||
+                          stopIds.contains(m.id);
                       return Marker(
                         width: isSelected ? 50 : 30,
                         height: isSelected ? 50 : 30,
@@ -380,12 +419,27 @@ class _MainAppState extends State<MainApp> {
                         child: GestureDetector(
                           onTap: () {
                             setState(() {
+                              final tappedLatLng = LatLng(m.lat, m.lon);
+
+                              // Fill FROM if not yet selected
                               if (_fromLatLng == null) {
-                                _fromLatLng = LatLng(m.lat, m.lon);
+                                _fromLatLng = tappedLatLng;
                                 _fromId = m.id;
                                 _fromController.text = m.name!;
-                              } else if (_toLatLng == null) {
-                                _toLatLng = LatLng(m.lat, m.lon);
+                              }
+                              // Fill STOP if any stops are unfilled
+                              else if (_nextStopIndexToFill <
+                                  stopControllers.length) {
+                                stopLatLngs[_nextStopIndexToFill] =
+                                    tappedLatLng;
+                                stopIds[_nextStopIndexToFill] = m.id;
+                                stopControllers[_nextStopIndexToFill].text =
+                                    m.name!;
+                                _nextStopIndexToFill++;
+                              }
+                              // Fill TO if not yet selected
+                              else if (_toLatLng == null) {
+                                _toLatLng = tappedLatLng;
                                 _toId = m.id;
                                 _toController.text = m.name!;
                               }
