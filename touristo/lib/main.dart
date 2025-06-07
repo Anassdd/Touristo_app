@@ -10,9 +10,10 @@ void main() {
   runApp(const MyApp());
 }
 
-String token =
+String TOKEN =
     'pk.eyJ1IjoiYW5hc3NhaWQiLCJhIjoiY21iaHRwZWFhMDFhYTJscjAxN2J1aGdqcSJ9.DuvzVIBDrYLB0-se6FhOxg';
 
+// main application widget
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
@@ -61,7 +62,7 @@ class _MainAppState extends State<MainApp> {
 
   List<LatLng> routePoints = [];
 
-  String selectedAlgorithm = 'Dijkstra (Heap)';
+  String selectedAlgorithm = 'Dijkstra (Tas)';
 
   @override
   @override
@@ -143,6 +144,7 @@ class _MainAppState extends State<MainApp> {
 
   // ========================================================== Reset Selection Button =======================================================
   void resetSelections() {
+    /* a reset function that clears and restart everything */
     setState(() {
       _fromController.clear();
       _toController.clear();
@@ -155,7 +157,10 @@ class _MainAppState extends State<MainApp> {
       routeDistance = null; //  Clear distance
       routeDuration = null; //  Clear duration
       currentTyping = '';
-      _animateMapTo(LatLng(48.8566, 2.3522), 13);
+      _animateMapTo(
+        LatLng(48.8566, 2.3522),
+        13,
+      ); // reset map to centre Paris with animation
     });
   }
 
@@ -185,6 +190,7 @@ class _MainAppState extends State<MainApp> {
   }
 
   void _animateMapTo(LatLng targetCenter, double targetZoom) async {
+    // smoothly animate the map to the targetcenter lat and long, with zoom level
     const int steps = 30;
 
     const Duration stepDuration = Duration(milliseconds: 16); // ~60fps
@@ -206,30 +212,33 @@ class _MainAppState extends State<MainApp> {
 
   double _lerp(double a, double b, double t) => a + (b - a) * t;
   // ========================================================== Selection et appeld'algorithme =======================================================
-  // DEBUG VERSION
+  // DEBUG VERSION, wiht prints
   void computeRoute() {
     if (graph == null || _fromId == null || _toId == null) {
-      print('🚫 Missing data: graph or selected nodes are null');
+      print(' Missing data: graph or selected nodes are null');
       return;
     }
 
-    print('📍 From ID: $_fromId');
-    print('📍 To ID: $_toId');
-    print('📦 Algorithm: $selectedAlgorithm');
+    // DEBUG PRINTS
+    print(' From ID: $_fromId');
+    print(' To ID: $_toId');
+    print(' Algorithm: $selectedAlgorithm');
 
+    // appel de l'algorithme choisi
     Map<String, Map<dynamic, dynamic>> result;
-    if (selectedAlgorithm == 'Dijkstra (Heap)') {
+    if (selectedAlgorithm == 'Dijkstra (Tas)') {
       result = dijkstraAvecTas(graph!, _fromId);
-    } else if (selectedAlgorithm == 'Dijkstra (No Heap)') {
+    } else if (selectedAlgorithm == 'Dijkstra (Sans Tas)') {
       result = dijkstraSansTas(graph!, _fromId);
     } else if (selectedAlgorithm == 'Bellman-Ford') {
       result = bellmanFord(graph!, _fromId);
     } else {
       result = Aetoile(graph!, _fromId, _toId);
     }
-
+    // calcul du chemin
     final path = chemin(_fromId, _toId, result['predecesseurs']!);
-    print('🧭 Path IDs: $path');
+    // DEBUG PRINTS
+    print('chemin (path) IDs: $path');
 
     final distanceMap = result['distances']!;
     var totalDistance = distanceMap[_toId] / 1000 ?? 0.0;
@@ -279,8 +288,8 @@ class _MainAppState extends State<MainApp> {
       }
     });
 
-    print('📏 Distance: ${totalDistance.toStringAsFixed(2)} km');
-    print('⏱️ Time: ${estimatedTime.toStringAsFixed(1)} min');
+    print(' Distance: ${totalDistance.toStringAsFixed(2)} km');
+    print(' Time: ${estimatedTime.toStringAsFixed(1)} min');
   }
 
   void _handleCustomDeparture(LatLng latLng) {
@@ -344,7 +353,7 @@ class _MainAppState extends State<MainApp> {
                 urlTemplate:
                     'https://api.mapbox.com/styles/v1/{id}/tiles/256/{z}/{x}/{y}@2x?access_token={accessToken}',
                 additionalOptions: {
-                  'accessToken': token,
+                  'accessToken': TOKEN,
                   'id': 'mapbox/streets-v11',
                 },
               ),
@@ -425,7 +434,7 @@ class _MainAppState extends State<MainApp> {
                     Polyline(
                       points: routePoints,
                       strokeWidth: 5,
-                      color: const Color.fromARGB(255, 41, 39, 176),
+                      color: const Color.fromARGB(155, 27, 39, 98),
                     ),
                   ],
                 ),
@@ -478,11 +487,11 @@ class _MainAppState extends State<MainApp> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '📏 ${routeDistance!.toStringAsFixed(2)} km',
+                      '${routeDistance!.toStringAsFixed(2)} km',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      '⏱ ${routeDuration!.toStringAsFixed(0)} min',
+                      '${routeDuration!.toStringAsFixed(0)} min',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -519,12 +528,12 @@ class _MainAppState extends State<MainApp> {
                         setState(() => selectedAlgorithm = value!),
                     items: const [
                       DropdownMenuItem(
-                        value: 'Dijkstra (Heap)',
-                        child: Text('Dijkstra (Heap)'),
+                        value: 'Dijkstra (Tas)',
+                        child: Text('Dijkstra (Tas)'),
                       ),
                       DropdownMenuItem(
-                        value: 'Dijkstra (No Heap)',
-                        child: Text('Dijkstra (No Heap)'),
+                        value: 'Dijkstra (Sans Tas)',
+                        child: Text('Dijkstra (Sans Tas)'),
                       ),
                       DropdownMenuItem(
                         value: 'Bellman-Ford',

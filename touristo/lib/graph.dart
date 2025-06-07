@@ -87,7 +87,7 @@ class Graph {
   GraphNode? getNode(dynamic id) => nodes[id];
 }
 
-/// initialisation du graphe par le code Json
+/// initialisation du graphe par le code Json (oriente)
 ///
 /*
 Future<Graph> loadGraphFromJson(String assetPath) async {
@@ -126,10 +126,10 @@ Future<Graph> loadGraphFromJson(String assetPath) async {
   for (var edgeJson in jsonData['edges']) {
     final edge = GraphEdge.fromJson(edgeJson);
 
-    // Arête directe
+    // arc directe
     graph.addEdge(edge);
 
-    // Arête inverse (source <-> target)
+    // arc inverse (source <-> target)
     final reversedEdge = GraphEdge(
       source: edge.target,
       target: edge.source,
