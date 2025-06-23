@@ -32,6 +32,7 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
+  Set<dynamic> selectedMuseumIds = {};
   int _nextStopIndexToFill = 0;
   double? routeDistance;
   double? routeDuration;
@@ -134,6 +135,7 @@ class _MainAppState extends State<MainApp> {
   void onSuggestionTap(GraphNode museum, [int? stopIndex]) {
     setState(() {
       final latLng = LatLng(museum.lat, museum.lon);
+      selectedMuseumIds.add(museum.id);
       if (stopIndex != null) {
         stopControllers[stopIndex].text = museum.name!;
         stopLatLngs[stopIndex] = latLng;
@@ -420,7 +422,7 @@ class _MainAppState extends State<MainApp> {
                           onTap: () {
                             setState(() {
                               final tappedLatLng = LatLng(m.lat, m.lon);
-
+                              selectedMuseumIds.add(m.id);
                               // Fill FROM if not yet selected
                               if (_fromLatLng == null) {
                                 _fromLatLng = tappedLatLng;
