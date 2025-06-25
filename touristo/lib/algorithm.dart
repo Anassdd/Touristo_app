@@ -235,77 +235,103 @@ List<List<T>> permutations<T>(List<T> liste) {
   return resultats;
 }
 
-// TSP avec A* à chaque étape, retourne le chemin optimal (mais lent)
-Map<String, dynamic> voyageurComplet(
+// Voyageur de commerce avec A* à chaque étape, retourne le chemin optimal (mais très lent)
+// Principe: On prends tout les permutations possibles des musées pour parcourir notre etapes et apres on calcul la distance et on garde le chemin avec la distance minimale
+Map<String, dynamic> voyageurOptimal(
   Graph graphe,
   dynamic depart,
   List<dynamic> etapes,
 ) {
-  double distanceTotaleMin = double.infinity;
+  // NOTE etapes sont les musée qu'on veut visiter (stops)
+  double meilleureDistance = double.infinity;
   List<dynamic> meilleurChemin = [];
 
-  final tousLesParcours = permutations(etapes);
+  // on recupere toutes les combinaisons possibles des musées à visiter
+  final toutesLesPossibilites = permutations(etapes);
 
-  for (final ordre in tousLesParcours) {
-    final chemin = [depart, ...ordre, depart];
-    double distanceTotale = 0.0;
+  // On teste chaque ordre possible
+  for (var ordre in toutesLesPossibilites) {
+    var chemin = [depart, ...ordre, depart];
+    // on revient au point de depart à la fin (poitn initial)
+    double distance = 0.0;
 
+    // on calcule la distance totale de ce chemin
     for (int i = 0; i < chemin.length - 1; i++) {
-      final resultat = Aetoile(graphe, chemin[i], chemin[i + 1]);
-      final d = resultat['distances']![chemin[i + 1]] ?? double.infinity;
-      distanceTotale += d;
+      var resultat = Aetoile(graphe, chemin[i], chemin[i + 1]);
+      //on recupere la distance entre deux musée et s'il y a pas un chemin la distance est infini et alors on arrete -> pas de chemin
+      var dist = resultat['distances']?[chemin[i + 1]] ?? double.infinity;
+      if (dist == double.infinity) {
+        distance = double.infinity;
+        break;
+      }
+      distance += dist;
     }
 
-    if (distanceTotale < distanceTotaleMin) {
-      distanceTotaleMin = distanceTotale;
+    // on garde le meilleur chemin (le plus court)
+    if (distance < meilleureDistance) {
+      meilleureDistance = distance;
       meilleurChemin = chemin;
     }
   }
 
-  return {'chemin': meilleurChemin, 'distance': distanceTotaleMin};
+  return {'chemin': meilleurChemin, 'distance': meilleureDistance};
 }
 
-// Version plus rapide : à chaque fois, on va vers le musée le plus proche
+// Version plus rapide pour visiter tous les musées en allant à chaque fois vers le plus proche
 Map<String, dynamic> voyageurRapide(
   Graph graphe,
   dynamic depart,
   List<dynamic> etapes,
 ) {
-  final dejaVisites = <dynamic>{depart};
+  //les musées dejavisités
+  final visites = <dynamic>{depart};
+
   final chemin = [depart];
   double distanceTotale = 0.0;
-
+  // notre position
   dynamic actuel = depart;
-  final restant = List<dynamic>.from(etapes);
 
-  while (restant.isNotEmpty) {
+  // musees non visiter
+  final aVisiter = List<dynamic>.from(etapes);
+
+  while (aVisiter.isNotEmpty) {
     dynamic plusProche;
-    double minDistance = double.infinity;
+    double distMin = double.infinity;
 
-    for (final musee in restant) {
-      final a = graphe.getNode(actuel)!;
-      final b = graphe.getNode(musee)!;
-      final d = sqrt(pow(a.lat - b.lat, 2) + pow(a.lon - b.lon, 2));
+    // on cherche le musee le plus proche de notre position actuelle
+    for (final musee in aVisiter) {
+      final nodeActuel = graphe.getNode(actuel)!;
+      final nodeMusee = graphe.getNode(musee)!;
 
-      if (d < minDistance) {
-        minDistance = d;
+      final d = sqrt(
+        pow(nodeActuel.lat - nodeMusee.lat, 2) +
+            pow(nodeActuel.lon - nodeMusee.lon, 2),
+      );
+
+      if (d < distMin) {
+        distMin = d;
         plusProche = musee;
       }
     }
 
-    distanceTotale += minDistance;
+    // mis à jour de chemin et les variables
+    distanceTotale += distMin;
     chemin.add(plusProche);
-    dejaVisites.add(plusProche);
+    visites.add(plusProche);
     actuel = plusProche;
-    restant.remove(plusProche);
+    aVisiter.remove(plusProche);
   }
 
-  // Retour au point de départ
-  final a = graphe.getNode(actuel)!;
-  final b = graphe.getNode(depart)!;
-  final retour = sqrt(pow(a.lat - b.lat, 2) + pow(a.lon - b.lon, 2));
+  // En fin on revient au musée de départ
+  final nodeFin = graphe.getNode(actuel)!;
+  final nodeDebut = graphe.getNode(depart)!;
+
+  final retour = sqrt(
+    pow(nodeFin.lat - nodeDebut.lat, 2) + pow(nodeFin.lon - nodeDebut.lon, 2),
+  );
+
   distanceTotale += retour;
-  chemin.add(depart);
+  chemin.add(depart); // on revient au point de départ
 
   return {'chemin': chemin, 'distance': distanceTotale};
 }
