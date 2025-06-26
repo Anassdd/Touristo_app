@@ -240,19 +240,27 @@ List<List<T>> permutations<T>(List<T> liste) {
 Map<String, dynamic> voyageurOptimal(
   Graph graphe,
   dynamic depart,
-  List<dynamic> etapes,
-) {
-  // NOTE etapes sont les musée qu'on veut visiter (stops)
+  List<dynamic> etapes, {
+  dynamic destination,
+  bool returnToStart = true,
+}) {
+  // etapes sont les musée qu'on veut visiter (stops)
   double meilleureDistance = double.infinity;
   List<dynamic> meilleurChemin = [];
 
-  // on recupere toutes les combinaisons possibles des musées à visiter
-  final toutesLesPossibilites = permutations(etapes);
+  // inclure la destination dans les étapes si elle n'y est pas déjà
+  final fullEtapes = List<dynamic>.from(etapes);
+  if (destination != null && !fullEtapes.contains(destination)) {
+    fullEtapes.add(destination);
+  }
 
   // On teste chaque ordre possible
-  for (var ordre in toutesLesPossibilites) {
-    var chemin = [depart, ...ordre, depart];
-    // on revient au point de depart à la fin (poitn initial)
+  for (var ordre in permutations(fullEtapes)) {
+    final chemin = [depart, ...ordre];
+    if (returnToStart)
+      chemin.add(
+        depart,
+      ); // on revient au point de depart à la fin (poitn initial)
     double distance = 0.0;
 
     // on calcule la distance totale de ce chemin
@@ -271,6 +279,7 @@ Map<String, dynamic> voyageurOptimal(
     if (distance < meilleureDistance) {
       meilleureDistance = distance;
       meilleurChemin = chemin;
+      if (returnToStart) meilleurChemin = [...chemin];
     }
   }
 
@@ -281,8 +290,10 @@ Map<String, dynamic> voyageurOptimal(
 Map<String, dynamic> voyageurRapide(
   Graph graphe,
   dynamic depart,
-  List<dynamic> etapes,
-) {
+  List<dynamic> etapes, {
+  dynamic destination,
+  bool returnToStart = true,
+}) {
   //les musées dejavisités
   final visites = <dynamic>{depart};
 
@@ -321,17 +332,33 @@ Map<String, dynamic> voyageurRapide(
     actuel = plusProche;
     aVisiter.remove(plusProche);
   }
+  // destination represent le dernier element car il n'est pas dans la liste des etape
+  if (destination != null && actuel != destination) {
+    final nodeActuel = graphe.getNode(actuel)!;
+    final nodeDest = graphe.getNode(destination)!;
+
+    final d = sqrt(
+      pow(nodeActuel.lat - nodeDest.lat, 2) +
+          pow(nodeActuel.lon - nodeDest.lon, 2),
+    );
+
+    distanceTotale += d;
+    chemin.add(destination);
+    actuel = destination;
+  }
 
   // En fin on revient au musée de départ
-  final nodeFin = graphe.getNode(actuel)!;
-  final nodeDebut = graphe.getNode(depart)!;
+  if (returnToStart) {
+    final nodeFin = graphe.getNode(actuel)!;
+    final nodeDebut = graphe.getNode(depart)!;
 
-  final retour = sqrt(
-    pow(nodeFin.lat - nodeDebut.lat, 2) + pow(nodeFin.lon - nodeDebut.lon, 2),
-  );
+    final retour = sqrt(
+      pow(nodeFin.lat - nodeDebut.lat, 2) + pow(nodeFin.lon - nodeDebut.lon, 2),
+    );
 
-  distanceTotale += retour;
-  chemin.add(depart); // on revient au point de départ
+    distanceTotale += retour;
+    chemin.add(depart);
+  }
 
   return {'chemin': chemin, 'distance': distanceTotale};
 }

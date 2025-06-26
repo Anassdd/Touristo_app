@@ -32,6 +32,9 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
+  //VARIABLES
+  bool returnToStart = true;
+  bool useOptimalTSP = false;
   Set<dynamic> selectedMuseumIds = {};
   int _nextStopIndexToFill = 0;
   double? routeDistance;
@@ -66,7 +69,8 @@ class _MainAppState extends State<MainApp> {
 
   String selectedAlgorithm = 'Dijkstra (Tas)';
 
-  @override
+  // FUNCTIONS OR METHODES
+
   @override
   void initState() {
     super.initState();
@@ -160,7 +164,6 @@ class _MainAppState extends State<MainApp> {
 
   // ========================================================== Reset Selection Button =======================================================
   void resetSelections() {
-    /* a reset function that clears and restart everything */
     setState(() {
       _nextStopIndexToFill = 0;
       _fromController.clear();
@@ -170,14 +173,24 @@ class _MainAppState extends State<MainApp> {
       _toLatLng = null;
       _fromId = null;
       _toId = null;
+
+      //  Clear all stop-related data
+      stopControllers.clear();
+      stopFocusNodes.clear();
+      stopLatLngs.clear();
+      stopIds.clear();
+      intermediateStops.clear();
+
+      selectedMuseumIds.clear(); // optional: clears all visual selections
       routePoints.clear();
-      routeDistance = null; //  Clear distance
-      routeDuration = null; //  Clear duration
+      routeDistance = null;
+      routeDuration = null;
       currentTyping = '';
+
       _animateMapTo(
-        LatLng(48.8566, 2.3522),
+        LatLng(48.8566, 2.3522), // center of Paris
         13,
-      ); // reset map to centre Paris with animation
+      );
     });
   }
 
@@ -236,58 +249,117 @@ class _MainAppState extends State<MainApp> {
       return;
     }
 
-    // DEBUG PRINTS
-    print(' From ID: $_fromId');
-    print(' To ID: $_toId');
-    print(' Algorithm: $selectedAlgorithm');
+    final stops = stopIds.whereType<dynamic>().toList();
 
-    // appel de l'algorithme choisi
-    Map<String, Map<dynamic, dynamic>> result;
-    if (selectedAlgorithm == 'Dijkstra (Tas)') {
-      result = dijkstraAvecTas(graph!, _fromId);
-    } else if (selectedAlgorithm == 'Dijkstra (Sans Tas)') {
-      result = dijkstraSansTas(graph!, _fromId);
-    } else if (selectedAlgorithm == 'Bellman-Ford') {
-      result = bellmanFord(graph!, _fromId);
-    } else {
-      result = Aetoile(graph!, _fromId, _toId);
-    }
-    // calcul du chemin
-    final path = chemin(_fromId, _toId, result['predecesseurs']!);
-    // DEBUG PRINTS
-    print('chemin (path) IDs: $path');
-
-    final distanceMap = result['distances']!;
-    var totalDistance = distanceMap[_toId] / 1000 ?? 0.0;
     List<LatLng> points = [];
+    double totalDistance = 0.0;
 
-    for (int i = 0; i < path.length - 1; i++) {
-      final nodeA = graph!.getNode(path[i])!;
-      final nodeB = graph!.getNode(path[i + 1])!;
-      totalDistance += Distance().as(
-        LengthUnit.Kilometer,
-        LatLng(nodeA.lat, nodeA.lon),
-        LatLng(nodeB.lat, nodeB.lon),
-      );
-      points.add(LatLng(nodeA.lat, nodeA.lon));
+    if (stops.isNotEmpty) {
+      // ==== TSP Case ====
+      final result = useOptimalTSP
+          ? voyageurOptimal(
+              graph!,
+              _fromId,
+              stops,
+              destination: _toId,
+              returnToStart: returnToStart,
+            )
+          : voyageurRapide(
+              graph!,
+              _fromId,
+              stops,
+              destination: _toId,
+              returnToStart: returnToStart,
+            );
+      final path = result['chemin'] as List<dynamic>;
+
+      for (int i = 0; i < path.length - 1; i++) {
+        final segmentResult = Aetoile(graph!, path[i], path[i + 1]);
+        final subPath = chemin(
+          path[i],
+          path[i + 1],
+          segmentResult['predecesseurs']!,
+        );
+
+        if (subPath.length < 2) continue;
+
+        for (int j = 0; j < subPath.length - 1; j++) {
+          final nodeA = graph!.getNode(subPath[j])!;
+          final nodeB = graph!.getNode(subPath[j + 1])!;
+          final edge = graph!
+              .neighbors(nodeA.id)
+              .firstWhere(
+                (e) => e.target == nodeB.id,
+                orElse: () => throw Exception(
+                  'Arc manquant entre ${nodeA.id} et ${nodeB.id}',
+                ),
+              );
+          totalDistance += edge.length / 1000; // convertir m → km
+
+          points.add(LatLng(nodeA.lat, nodeA.lon));
+        }
+
+        // Add last point of segment
+        if (subPath.isNotEmpty) {
+          final lastNode = graph!.getNode(subPath.last)!;
+          points.add(LatLng(lastNode.lat, lastNode.lon));
+        }
+      }
+
+      print('TSP Distance: ${totalDistance.toStringAsFixed(2)} km');
+    } else {
+      // ==== Normal shortest path ====
+      print(' From ID: $_fromId');
+      print(' To ID: $_toId');
+      print(' Algorithm: $selectedAlgorithm');
+
+      Map<String, Map<dynamic, dynamic>> result;
+      if (selectedAlgorithm == 'Dijkstra (Tas)') {
+        result = dijkstraAvecTas(graph!, _fromId);
+      } else if (selectedAlgorithm == 'Dijkstra (Sans Tas)') {
+        result = dijkstraSansTas(graph!, _fromId);
+      } else if (selectedAlgorithm == 'Bellman-Ford') {
+        result = bellmanFord(graph!, _fromId);
+      } else {
+        result = Aetoile(graph!, _fromId, _toId);
+      }
+
+      final path = chemin(_fromId, _toId, result['predecesseurs']!);
+      print('chemin (path) IDs: $path');
+
+      for (int i = 0; i < path.length - 1; i++) {
+        final fromId = path[i];
+        final toId = path[i + 1];
+
+        final edge = graph!
+            .neighbors(fromId)
+            .firstWhere(
+              (e) => e.target == toId,
+              orElse: () =>
+                  throw Exception('Arc manquant entre $fromId et $toId'),
+            );
+
+        totalDistance += edge.length / 1000; // convertir mètres → km
+
+        final nodeA = graph!.getNode(fromId)!;
+        points.add(LatLng(nodeA.lat, nodeA.lon));
+      }
+      if (path.isNotEmpty) {
+        final lastNode = graph!.getNode(path.last)!;
+        points.add(LatLng(lastNode.lat, lastNode.lon));
+      }
+
+      print(' Distance: ${totalDistance.toStringAsFixed(2)} km');
     }
 
-    // Add last point
-    if (path.isNotEmpty) {
-      final lastNode = graph!.getNode(path.last)!;
-      points.add(LatLng(lastNode.lat, lastNode.lon));
-    }
-
-    final estimatedTime =
-        totalDistance / 5 * 60; // assuming 5km/h walking speed
+    // ==== Affichage unifié ====
+    final estimatedTime = totalDistance / 5 * 60;
 
     setState(() {
-      routePoints = path.map((id) {
-        final node = graph!.getNode(id);
-        return LatLng(node!.lat, node.lon);
-      }).toList();
+      routePoints = points;
       routeDistance = totalDistance;
       routeDuration = estimatedTime;
+
       final allPoints = getAllSelectedPoints();
       if (allPoints.length > 1) {
         final bounds = LatLngBounds.fromPoints(allPoints);
@@ -308,9 +380,88 @@ class _MainAppState extends State<MainApp> {
       }
     });
 
-    print(' Distance: ${totalDistance.toStringAsFixed(2)} km');
-    print(' Time: ${estimatedTime.toStringAsFixed(1)} min');
-  }
+    print('Final Distance: ${totalDistance.toStringAsFixed(2)} km');
+    print('Estimated Time: ${estimatedTime.toStringAsFixed(1)} min');
+  } //   if (graph == null || _fromId == null || _toId == null) {
+  //     print(' Missing data: graph or selected nodes are null');
+  //     return;
+  //   }
+
+  //   // DEBUG PRINTS
+  //   print(' From ID: $_fromId');
+  //   print(' To ID: $_toId');
+  //   print(' Algorithm: $selectedAlgorithm');
+
+  //   // appel de l'algorithme choisi
+  //   Map<String, Map<dynamic, dynamic>> result;
+  //   if (selectedAlgorithm == 'Dijkstra (Tas)') {
+  //     result = dijkstraAvecTas(graph!, _fromId);
+  //   } else if (selectedAlgorithm == 'Dijkstra (Sans Tas)') {
+  //     result = dijkstraSansTas(graph!, _fromId);
+  //   } else if (selectedAlgorithm == 'Bellman-Ford') {
+  //     result = bellmanFord(graph!, _fromId);
+  //   } else {
+  //     result = Aetoile(graph!, _fromId, _toId);
+  //   }
+  //   // calcul du chemin
+  //   final path = chemin(_fromId, _toId, result['predecesseurs']!);
+  //   // DEBUG PRINTS
+  //   print('chemin (path) IDs: $path');
+
+  //   final distanceMap = result['distances']!;
+  //   var totalDistance = distanceMap[_toId] / 1000 ?? 0.0;
+  //   List<LatLng> points = [];
+
+  //   for (int i = 0; i < path.length - 1; i++) {
+  //     final nodeA = graph!.getNode(path[i])!;
+  //     final nodeB = graph!.getNode(path[i + 1])!;
+  //     totalDistance += Distance().as(
+  //       LengthUnit.Kilometer,
+  //       LatLng(nodeA.lat, nodeA.lon),
+  //       LatLng(nodeB.lat, nodeB.lon),
+  //     );
+  //     points.add(LatLng(nodeA.lat, nodeA.lon));
+  //   }
+
+  //   // Add last point
+  //   if (path.isNotEmpty) {
+  //     final lastNode = graph!.getNode(path.last)!;
+  //     points.add(LatLng(lastNode.lat, lastNode.lon));
+  //   }
+
+  //   final estimatedTime =
+  //       totalDistance / 5 * 60; // assuming 5km/h walking speed
+
+  //   setState(() {
+  //     routePoints = path.map((id) {
+  //       final node = graph!.getNode(id);
+  //       return LatLng(node!.lat, node.lon);
+  //     }).toList();
+  //     routeDistance = totalDistance;
+  //     routeDuration = estimatedTime;
+  //     final allPoints = getAllSelectedPoints();
+  //     if (allPoints.length > 1) {
+  //       final bounds = LatLngBounds.fromPoints(allPoints);
+  //       final center = bounds.center;
+  //       final zoomLevel = _calculateZoomFromBounds(
+  //         bounds,
+  //         MediaQuery.of(context).size,
+  //       );
+
+  //       _draggableController.animateTo(
+  //         0.2,
+  //         duration: const Duration(milliseconds: 500),
+  //         curve: Curves.easeOut,
+  //       );
+
+  //       _animateMapTo(center, zoomLevel);
+  //       _fitMapToSelectedMuseums();
+  //     }
+  //   });
+
+  //   print(' Distance: ${totalDistance.toStringAsFixed(2)} km');
+  //   print(' Time: ${estimatedTime.toStringAsFixed(1)} min');
+  // }
 
   void _fitMapToSelectedMuseums() {
     final points = <LatLng>[];
@@ -481,6 +632,35 @@ class _MainAppState extends State<MainApp> {
                         size: 40,
                       ),
                     ),
+                  // Show STOP markers even after both FROM and TO are selected
+                  ...stopLatLngs
+                      .asMap()
+                      .entries
+                      .where((e) => e.value != null)
+                      .map((entry) {
+                        final index = entry.key;
+                        final latLng = entry.value!;
+                        return Marker(
+                          width: 40,
+                          height: 40,
+                          point: latLng,
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+
+                              color: Color.fromARGB(255, 26, 55, 117),
+                            ),
+                            child: Text(
+                              '${index + 1}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                 ],
               ),
 
@@ -497,12 +677,47 @@ class _MainAppState extends State<MainApp> {
             ],
           ),
           Positioned(
+            top: 40,
+            right: 20,
+            child: Visibility(
+              visible: _sheetExtent > 0.35, // Show only when sheet is up
+              child: FloatingActionButton(
+                mini: true,
+                heroTag: 'collapse_sheet',
+                backgroundColor: Colors.white,
+                onPressed: () {
+                  _draggableController.animateTo(
+                    0.2,
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOut,
+                  );
+                },
+                child: const Icon(
+                  Icons.keyboard_arrow_down,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
             bottom: _sheetExtent * MediaQuery.of(context).size.height + 20,
             right: 20,
             child: Visibility(
               visible: showResetButton,
               child: Row(
                 children: [
+                  FloatingActionButton(
+                    heroTag: 'addStopLeft',
+                    backgroundColor: Colors.white,
+                    mini: true,
+                    onPressed: addStopField,
+                    child: const Icon(
+                      Icons.add_location_alt,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+
                   // Calculate Button
                   FloatingActionButton(
                     heroTag: 'calculate',
@@ -512,6 +727,7 @@ class _MainAppState extends State<MainApp> {
                     child: const Icon(Icons.route, color: Colors.white),
                   ),
                   const SizedBox(width: 10),
+
                   // Reset Button
                   FloatingActionButton(
                     heroTag: 'reset',
@@ -572,7 +788,7 @@ class _MainAppState extends State<MainApp> {
                 padding: const EdgeInsets.only(bottom: 16),
                 children: [
                   const Text(
-                    'Choose Algorithm:',
+                    "Choisir l'Algorithme:",
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   DropdownButton<String>(
@@ -609,7 +825,7 @@ class _MainAppState extends State<MainApp> {
                     focusNode: _fromFocus,
                     onChanged: (v) => onChanged(v, false),
                     decoration: const InputDecoration(
-                      labelText: 'From',
+                      labelText: 'Départ',
                       prefixIcon: Icon(Icons.my_location),
                       border: OutlineInputBorder(),
                     ),
@@ -672,7 +888,7 @@ class _MainAppState extends State<MainApp> {
                     focusNode: _toFocus,
                     onChanged: (v) => onChanged(v, true),
                     decoration: const InputDecoration(
-                      labelText: 'To',
+                      labelText: 'Arrivé',
                       prefixIcon: Icon(Icons.location_on),
                       border: OutlineInputBorder(),
                     ),
@@ -689,13 +905,14 @@ class _MainAppState extends State<MainApp> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: computeRoute,
-                    child: const Text("Calculate Route"),
+                    child: const Text("Gooo"),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
                       foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(48),
                     ),
                   ),
+
                   if (routeDistance != null && routeDuration != null)
                     const SizedBox(height: 10),
                   OutlinedButton(
@@ -706,11 +923,32 @@ class _MainAppState extends State<MainApp> {
                   ElevatedButton.icon(
                     onPressed: addStopField,
                     icon: const Icon(Icons.add),
-                    label: const Text("Add Stop"),
+                    label: const Text("Ajouter un arrêt"),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color.fromARGB(255, 255, 255, 255),
                       foregroundColor: const Color.fromARGB(255, 0, 0, 0),
                     ),
+                  ),
+                  SwitchListTile(
+                    title: const Text("Voyageur Optimal"),
+                    subtitle: const Text("Pas rapide mais optimal"),
+                    value: useOptimalTSP,
+                    onChanged: (bool value) {
+                      setState(() {
+                        useOptimalTSP = value;
+                      });
+                    },
+                    activeColor: Colors.indigo,
+                  ),
+                  SwitchListTile(
+                    title: const Text('Retour au départ'),
+                    value: returnToStart,
+                    onChanged: (value) {
+                      setState(() {
+                        returnToStart = value;
+                      });
+                    },
+                    activeColor: Colors.indigo,
                   ),
                 ],
               ),
