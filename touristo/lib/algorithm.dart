@@ -12,7 +12,7 @@ Map<String, Map<dynamic, dynamic>> dijkstraSansTas(
       <
         dynamic,
         double
-      >{}; // la distance entre le noeud de depart et chaque noeud, (id , distance)
+      >{}; // la distance entre le noeud de depart et  chaque noeud, (id , distance)
 
   final pred = <dynamic, dynamic>{}; // les predecesseur pour avoir le chemin
   final visite = <dynamic>{}; // id des noeuds visités
